@@ -1,0 +1,427 @@
+<template>
+  <view class="container">
+    <!-- 头部标题 -->
+    <view class="header">
+      <view class="back-btn" @click="navigateBack">
+        <i class="iconfont icon-arrow-left"></i>
+      </view>
+      <view class="title">忘记密码</view>
+    </view>
+
+    <!-- 表单内容 -->
+    <view class="form-container">
+      <!-- 手机号输入 -->
+      <view class="form-item">
+        <view class="input-wrapper">
+          <i class="iconfont icon-phone"></i>
+          <input 
+            type="number" 
+            placeholder="请输入手机号" 
+            v-model="phoneNumber"
+            maxlength="11"
+            @input="formatPhone"
+          />
+        </view>
+        <view class="error-tip" v-if="showPhoneError">{{ phoneErrorMsg }}</view>
+      </view>
+
+      <!-- 验证码输入 -->
+      <view class="form-item">
+        <view class="input-wrapper verify-wrapper">
+          <i class="iconfont icon-verify"></i>
+          <input 
+            type="number" 
+            placeholder="请输入验证码" 
+            v-model="verifyCode"
+            maxlength="6"
+          />
+          <button 
+            class="get-verify-btn" 
+            @click="getVerifyCode"
+            :disabled="!canGetVerify || isCounting"
+          >
+            {{ isCounting ? `${countDown}s后重新获取` : '获取验证码' }}
+          </button>
+        </view>
+        <view class="error-tip" v-if="showVerifyError">{{ verifyErrorMsg }}</view>
+      </view>
+
+      <!-- 新密码输入 -->
+      <view class="form-item">
+        <view class="input-wrapper">
+          <i class="iconfont icon-lock"></i>
+          <input 
+            type="password" 
+            placeholder="请设置新密码（6-16位）" 
+            v-model="newPassword"
+            :password-icon="showPassword ? 'eye' : 'eye-o'"
+            @click:password-icon="showPassword = !showPassword"
+          />
+        </view>
+        <view class="error-tip" v-if="showPasswordError">{{ passwordErrorMsg }}</view>
+      </view>
+
+      <!-- 确认新密码 -->
+      <view class="form-item">
+        <view class="input-wrapper">
+          <i class="iconfont icon-lock"></i>
+          <input 
+            type="password" 
+            placeholder="请确认新密码" 
+            v-model="confirmPassword"
+            :password-icon="showConfirmPassword ? 'eye' : 'eye-o'"
+            @click:password-icon="showConfirmPassword = !showConfirmPassword"
+          />
+        </view>
+        <view class="error-tip" v-if="showConfirmError">{{ confirmErrorMsg }}</view>
+      </view>
+
+      <!-- 提交按钮 -->
+      <button 
+        class="submit-btn" 
+        @click="submitForm"
+        :disabled="isSubmitting"
+      >
+        {{ isSubmitting ? '提交中...' : '确认重置' }}
+      </button>
+    </view>
+
+    <!-- 底部说明 -->
+    <view class="footer-tip">
+      密码重置后，请使用新密码登录
+    </view>
+  </view>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      // 表单数据
+      phoneNumber: '',
+      verifyCode: '',
+      newPassword: '',
+      confirmPassword: '',
+      
+      // 显示密码切换
+      showPassword: false,
+      showConfirmPassword: false,
+      
+      // 验证码倒计时
+      isCounting: false,
+      countDown: 60,
+      canGetVerify: false,
+      
+      // 提交状态
+      isSubmitting: false,
+      
+      // 错误提示
+      showPhoneError: false,
+      phoneErrorMsg: '',
+      showVerifyError: false,
+      verifyErrorMsg: '',
+      showPasswordError: false,
+      passwordErrorMsg: '',
+      showConfirmError: false,
+      confirmErrorMsg: ''
+    };
+  },
+  watch: {
+    // 监听手机号变化，判断是否可以获取验证码
+    phoneNumber(val) {
+      this.canGetVerify = val.length === 11;
+      // 清除错误提示
+      if (val) {
+        this.showPhoneError = false;
+      }
+    },
+    
+    // 监听密码变化
+    newPassword(val) {
+      if (val) {
+        this.showPasswordError = false;
+      }
+      // 检查两次密码是否一致
+      if (this.confirmPassword) {
+        this.checkConfirmPassword();
+      }
+    },
+    
+    // 监听确认密码变化
+    confirmPassword(val) {
+      if (val) {
+        this.showConfirmError = false;
+      }
+      this.checkConfirmPassword();
+    }
+  },
+  methods: {
+    // 返回上一页
+    navigateBack() {
+      uni.navigateBack({
+        delta: 1
+      });
+    },
+    
+    // 格式化手机号（添加空格分隔）
+    formatPhone(e) {
+      let value = e.detail.value.replace(/\s/g, '');
+      if (value.length > 3 && value.length <= 7) {
+        value = value.substring(0, 3) + ' ' + value.substring(3);
+      } else if (value.length > 7) {
+        value = value.substring(0, 3) + ' ' + value.substring(3, 7) + ' ' + value.substring(7);
+      }
+      this.phoneNumber = value;
+    },
+    
+    // 获取验证码
+    getVerifyCode() {
+      // 验证手机号格式
+      if (!this.validatePhone()) {
+        return;
+      }
+      
+      // 模拟获取验证码
+      this.isCounting = true;
+      let timer = setInterval(() => {
+        this.countDown--;
+        if (this.countDown <= 0) {
+          clearInterval(timer);
+          this.isCounting = false;
+          this.countDown = 60;
+        }
+      }, 1000);
+      
+      // 实际项目中这里应该调用后端接口发送验证码
+      uni.showToast({
+        title: '验证码已发送',
+        icon: 'none'
+      });
+    },
+    
+    // 验证手机号
+    validatePhone() {
+      const phone = this.phoneNumber.replace(/\s/g, '');
+      if (!phone) {
+        this.showPhoneError = true;
+        this.phoneErrorMsg = '请输入手机号';
+        return false;
+      }
+      
+      const reg = /^1[3-9]\d{9}$/;
+      if (!reg.test(phone)) {
+        this.showPhoneError = true;
+        this.phoneErrorMsg = '请输入正确的手机号';
+        return false;
+      }
+      
+      this.showPhoneError = false;
+      return true;
+    },
+    
+    // 验证验证码
+    validateVerifyCode() {
+      if (!this.verifyCode) {
+        this.showVerifyError = true;
+        this.verifyErrorMsg = '请输入验证码';
+        return false;
+      }
+      
+      if (this.verifyCode.length !== 6) {
+        this.showVerifyError = true;
+        this.verifyErrorMsg = '验证码长度为6位';
+        return false;
+      }
+      
+      this.showVerifyError = false;
+      return true;
+    },
+    
+    // 验证密码
+    validatePassword() {
+      if (!this.newPassword) {
+        this.showPasswordError = true;
+        this.passwordErrorMsg = '请设置新密码';
+        return false;
+      }
+      
+      if (this.newPassword.length < 6 || this.newPassword.length > 16) {
+        this.showPasswordError = true;
+        this.passwordErrorMsg = '密码长度为6-16位';
+        return false;
+      }
+      
+      this.showPasswordError = false;
+      return true;
+    },
+    
+    // 检查两次密码是否一致
+    checkConfirmPassword() {
+      if (this.newPassword !== this.confirmPassword) {
+        this.showConfirmError = true;
+        this.confirmErrorMsg = '两次输入的密码不一致';
+        return false;
+      }
+      
+      this.showConfirmError = false;
+      return true;
+    },
+    
+    // 提交表单
+    submitForm() {
+      // 验证所有字段
+      const isPhoneValid = this.validatePhone();
+      const isVerifyValid = this.validateVerifyCode();
+      const isPasswordValid = this.validatePassword();
+      const isConfirmValid = this.checkConfirmPassword();
+      
+      if (!isPhoneValid || !isVerifyValid || !isPasswordValid || !isConfirmValid) {
+        return;
+      }
+      
+      // 模拟提交
+      this.isSubmitting = true;
+      
+      // 实际项目中这里应该调用后端接口完成密码重置
+      setTimeout(() => {
+        this.isSubmitting = false;
+        uni.showToast({
+          title: '密码重置成功',
+          icon: 'success'
+        });
+        
+        // 重置成功后返回登录页
+        setTimeout(() => {
+          uni.navigateBack({
+            delta: 1
+          });
+        }, 1500);
+      }, 1500);
+    }
+  }
+};
+</script>
+
+<style scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 30rpx;
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+}
+
+.back-btn {
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-arrow-left {
+  font-size: 36rpx;
+  color: #333;
+}
+
+.title {
+  flex: 1;
+  text-align: center;
+  font-size: 36rpx;
+  font-weight: 500;
+  color: #333;
+  margin-right: 60rpx;
+}
+
+.form-container {
+  flex: 1;
+  padding: 60rpx 30rpx;
+}
+
+.form-item {
+  margin-bottom: 40rpx;
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  background-color: #fff;
+  border-radius: 8rpx;
+  padding: 0 30rpx;
+  height: 100rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+.verify-wrapper {
+  position: relative;
+}
+
+.iconfont {
+  font-size: 32rpx;
+  color: #666;
+  margin-right: 20rpx;
+}
+
+input {
+  flex: 1;
+  height: 100%;
+  font-size: 32rpx;
+  color: #333;
+}
+
+input::placeholder {
+  color: #ccc;
+}
+
+.get-verify-btn {
+  min-width: 200rpx;
+  height: 60rpx;
+  line-height: 60rpx;
+  background-color: #007aff;
+  color: #fff;
+  font-size: 28rpx;
+  border-radius: 30rpx;
+  padding: 0 20rpx;
+}
+
+.get-verify-btn:disabled {
+  background-color: #ccc;
+  color: #fff;
+}
+
+.error-tip {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  color: #ff4d4f;
+  padding-left: 82rpx;
+}
+
+.submit-btn {
+  width: 100%;
+  height: 100rpx;
+  line-height: 100rpx;
+  background-color: #007aff;
+  color: #fff;
+  font-size: 34rpx;
+  border-radius: 8rpx;
+  margin-top: 40rpx;
+}
+
+.submit-btn:disabled {
+  background-color: #99cfff;
+}
+
+.footer-tip {
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  padding: 30rpx;
+}
+</style>

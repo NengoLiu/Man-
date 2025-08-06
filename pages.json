@@ -3,7 +3,16 @@
 		{
 			"path": "pages/index/index",
 			"style": {
-				"navigationBarTitleText": "uni-app x",
+				"navigationBarTitleText": "操控页面",
+				"navigationBarBackgroundColor": "#8A919F",  // 导航栏背景色
+				"pageOrientation": "landscape"
+			}
+		},
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationBarBackgroundColor": "#8A919F",  // 低饱和度灰色，适合简约设计
 				"pageOrientation": "landscape"
 			}
 		}
