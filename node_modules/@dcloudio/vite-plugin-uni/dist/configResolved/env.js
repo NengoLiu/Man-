@@ -1,0 +1,22 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.initEnv = void 0;
+const path_1 = __importDefault(require("path"));
+function initEnv(config) {
+    if (!process.env.UNI_PLATFORM) {
+        process.env.UNI_PLATFORM = 'h5';
+    }
+    if (!process.env.UNI_CLI_CONTEXT) {
+        process.env.UNI_CLI_CONTEXT = process.cwd();
+    }
+    if (!process.env.UNI_INPUT_DIR) {
+        process.env.UNI_INPUT_DIR = path_1.default.resolve(config.root, 'src');
+    }
+    if (!process.env.UNI_OUTPUT_DIR) {
+        process.env.UNI_OUTPUT_DIR = path_1.default.resolve(config.root, config.build.outDir);
+    }
+}
+exports.initEnv = initEnv;

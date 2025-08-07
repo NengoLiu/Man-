@@ -1,0 +1,15 @@
+{
+  "name": "Man-",
+  "dependencies": {},
+  "extensions": {
+    "uni-cloud-jql": {},
+    "uni-cloud-redis": {},
+    "uni-cloud-sms": {},
+    "uni-cloud-verify": {},
+    "uni-cloud-push": {},
+    "uni-cloud-ai": {},
+    "uni-cloud-ext-storage": {},
+    "uni-cloud-ext-database": {},
+    "uni-cloud-live": {}
+  }
+}
