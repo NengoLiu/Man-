@@ -1,46 +1,25 @@
-<script lang="uts">
-	let firstBackTime = 0
-	export default {
-		onLaunch: function () {
-			console.log('App Launch')
-		},
-		onShow: function () {
-			console.log('App Show')
-		},
-		onHide: function () {
-			console.log('App Hide')
-		},
-		// #ifdef APP-ANDROID
-		onLastPageBackPress: function () {
-			console.log('App LastPageBackPress')
-			if (firstBackTime == 0) {
-				uni.showToast({
-					title: '再按一次退出应用',
-					position: 'bottom',
-				})
-				firstBackTime = Date.now()
-				setTimeout(() => {
-					firstBackTime = 0
-				}, 2000)
-			} else if (Date.now() - firstBackTime < 2000) {
-				firstBackTime = Date.now()
-				uni.exit()
-			}
-		},
-		// #endif
-		onExit: function () {
-			console.log('App Exit')
-		},
-	}
+<template>
+  <div id="app">
+    <Login v-if="!isLoggedIn" @loginSuccess="handleLoginSuccess" />
+    <RobotController v-else />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+import Login from './components/Login.vue'
+import RobotController from './components/RobotController.vue'
+
+const isLoggedIn = ref(false)
+
+const handleLoginSuccess = () => {
+  isLoggedIn.value = true
+}
 </script>
 
 <style>
-	/*每个页面公共css */
-	.uni-row {
-		flex-direction: row;
-	}
-
-	.uni-column {
-		flex-direction: column;
-	}
+#app {
+  margin: 0;
+  padding: 0;
+}
 </style>
