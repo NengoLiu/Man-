@@ -94,6 +94,21 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
 
+// 手动声明缺失的类型
+declare interface HTMLElement {
+  getBoundingClientRect(): DOMRect;
+}
+declare type TouchEvent = {
+  touches: Array<{ clientX: number; clientY: number }>;
+  preventDefault: () => void;
+};
+declare type MouseEvent = {
+  clientX: number;
+  clientY: number;
+  currentTarget: any;
+  preventDefault: () => void;
+};
+
 // 响应式数据
 const connectionStatus = ref('connected')
 const batteryLevel = ref(85)
@@ -121,7 +136,7 @@ const joystickStyle = computed(() => {
   }
 })
 
-const dpadStyle = computed(() => {
+const dpadStyle = computed<{ transform: string }>(() => {
   return {
     transform: `translate(${dpadPosition.x}px, ${dpadPosition.y}px)`
   }
@@ -131,10 +146,12 @@ const dpadStyle = computed(() => {
 let joystickCenter = { x: 0, y: 0 }
 let isDraggingJoystick = false
 
-const handleJoystickStart = (e: TouchEvent | MouseEvent) => {
+const handleJoystickStart = (e: any) => {
   e.preventDefault()
   isDraggingJoystick = true
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  // 断言为包含 currentTarget 的元素事件
+  const target = e.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
   joystickCenter = {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2
@@ -177,7 +194,7 @@ const handleJoystickEnd = () => {
 let dpadCenter = { x: 0, y: 0 }
 let isDraggingDpad = false
 
-const calcDPadCenter = (e: TouchEvent | MouseEvent) => {
+const calcDPadCenter = (e: Event) => {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   dpadCenter = {
     x: rect.left + rect.width / 2,
@@ -185,7 +202,7 @@ const calcDPadCenter = (e: TouchEvent | MouseEvent) => {
   }
 }
 
-const startDPad = (e: TouchEvent | MouseEvent) => {
+const startDPad = (e: any) => {
   e.preventDefault()
   isDraggingDpad = true
   calcDPadCenter(e)
@@ -246,7 +263,11 @@ const handleEmergencyStop = () => {
   dpadPosition.y = 0
   dpadDirection.value = ''
   
-  alert('紧急停止 - 机器人已停止所有动作')
+  uni.showToast({
+	  title: '紧急停止 - 机器人已停止所有动作',
+	  icon: 'none',
+	  duration: 2000
+  })
 }
 
 const toggleConnection = () => {

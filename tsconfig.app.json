@@ -24,7 +24,13 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+	
+	/* 新增：添加 uni-app 类型 */
+	"types": [
+	  "@dcloudio/types",  // uni-app 核心类型
+	  "@dcloudio/uni-app-x/types"  // uni-app x 扩展类型
+	]
   },
   "include": ["src"]
 }
