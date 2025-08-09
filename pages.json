@@ -1,17 +1,17 @@
 {
 	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
 		{
-			"path": "pages/index/index",
+			"path": "uni-app/pages/Login",
 			"style": {
-				"navigationBarTitleText": "操控页面",
+				"navigationBarTitleText": "登录",
 				"navigationBarBackgroundColor": "#8A919F",  // 导航栏背景色
 				"pageOrientation": "landscape"
 			}
 		},
 		{
-			"path": "pages/login/login",
+			"path": "uni-app/pages/RobotController",
 			"style": {
-				"navigationBarTitleText": "登录",
+				"navigationBarTitleText": "操控界面",
 				"navigationBarBackgroundColor": "#8A919F",  // 低饱和度灰色，适合简约设计
 				"pageOrientation": "landscape"
 			}

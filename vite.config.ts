@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
+import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
@@ -10,12 +10,13 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
   },
   plugins: [
-    vue(),
-    mode === 'development' && componentTagger(),
+    react(),
+    mode === 'development' &&
+    componentTagger(),
   ].filter(Boolean),
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "."),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
 }));
