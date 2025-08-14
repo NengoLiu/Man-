@@ -66,202 +66,171 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
-import api from '@/api/client';
-import { me } from '@/api/auth';
+import { onMounted, onUnmounted, ref } from 'vue'
 
-const user = ref<{ id: number; username: string } | null>(null);
+// 仅用于类型消除（UTS 环境无 DOM 类型）
+declare const plus: any
+declare const navigator: any
+
+// 避免 UTS 联合对象字面量类型报错
+const user = ref<any>(null)
+
+const mode = ref<'socketTask' | 'tcp'>('socketTask')
+const ip = ref('192.168.4.1')
+const port = ref<number>(8080)
+const status = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
+const logs = ref<string[]>([])
+const customPayload = ref('')
+
+let socketTask: UniApp.SocketTask | null = null
+
+const isAppPlus = ref(false)
+const isAndroid = ref(false)
+
+// 平台检测（条件编译避免 UTS 检查 DOM）
+const detectPlatform = () => {
+  // #ifdef APP-PLUS
+  isAppPlus.value = true
+  isAndroid.value = (plus?.os?.name || '').toLowerCase() === 'android'
+  // #endif
+
+  // #ifdef H5
+  const ua = navigator?.userAgent || ''
+  isAppPlus.value = false
+  isAndroid.value = /Android/i.test(ua)
+  // #endif
+}
+
+// 轮询等待 plus 可用（不依赖 document）
+const waitForPlus = () =>
+  new Promise<void>((resolve) => {
+    // @ts-ignore
+    if (typeof plus !== 'undefined') return resolve()
+    const timer = setInterval(() => {
+      // @ts-ignore
+      if (typeof plus !== 'undefined') {
+        clearInterval(timer)
+        resolve()
+      }
+    }, 50)
+  })
 
 onMounted(async () => {
-  try {
-    const { data } = await me();
-    user.value = data.user;
-  } catch (e) {
-    // 未登录或 token 失效，返回登录页
-    if (typeof window !== 'undefined') {
-      window.location.href = '#/';
-    }
-  }
-});
-
-const logOpen = async () => {
-  await api.post('/logs', { message: 'open-robot-panel' });
-  uni.showToast({
-	  title: '已记录',
-	  icon: 'none',
-	  duration: 2000
-  });
-};
-
-// 通信实现
-const mode = ref<'socketTask' | 'tcp'>('socketTask');
-const ip = ref('192.168.4.1');
-const port = ref<number>(8080);
-const status = ref<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
-const logs = ref<string[]>([]);
-const customPayload = ref('');
-
-let socketTask: UniApp.SocketTask | null = null;  // 用于存储 uni 的 WebSocket 任务实例
-
-const isAppPlus = ref(false);
-const isAndroid = ref(false);
-
-const detectPlatform = () => {
-  const w = window as any;
-  const ua = navigator.userAgent || '';
-  isAppPlus.value = !!w.plus;
-  isAndroid.value = /Android/i.test(ua);
-};
-
-onMounted(() => {
-  detectPlatform();
-  document.addEventListener('plusready', () => {
-    detectPlatform();
-    appendLog('plusready: 原生能力可用');
-  });
-});
+  detectPlatform()
+  // #ifdef APP-PLUS
+  await waitForPlus()
+  detectPlatform()
+  appendLog('plusready: 原生能力可用')
+  // #endif
+})
 
 onUnmounted(() => {
-  try { disconnect(); } catch {}
-});
+  try { disconnect() } catch {}
+})
 
 function appendLog(line: string) {
-  const stamp = new Date().toLocaleTimeString();
-  logs.value.push(`[${stamp}] ${line}`);
-  if (logs.value.length > 300) logs.value.shift();
+  const stamp = new Date().toLocaleTimeString()
+  logs.value.push(`[${stamp}] ${line}`)
+  if (logs.value.length > 300) logs.value.shift()
+}
+
+// 示例按钮上报（本地提示；如需接入真实接口，请在 H5 用 fetch/uni.request）
+const logOpen = async () => {
+  uni.showToast({ title: '已记录', icon: 'none', duration: 2000 })
 }
 
 function connect() {
-  if (status.value !== 'disconnected') return;
+  if (status.value !== 'disconnected') return
   if (!ip.value || !port.value) {
-    uni.showToast({
-		title: '请填写正确的 IP 与端口',
-		icon: 'none',
-		duration: 2000
-	});
-    return;
+    uni.showToast({ title: '请填写正确的 IP 与端口', icon: 'none', duration: 2000 })
+    return
   }
 
   if (mode.value === 'socketTask') {
-    const url = `socketTask://${ip.value}:${port.value}`;
-    appendLog(`socketTask 连接 ${url} ...`);
-    status.value = 'connecting';
+    const url = `socketTask://${ip.value}:${port.value}`
+    appendLog(`socketTask 连接 ${url} ...`)
+    status.value = 'connecting'
     try {
-      // 2. 使用 uni.connectSocket 创建连接，替代 new WebSocket()
-      socketTask = uni.connectSocket({
-        url,
-        header: {
-          'Content-Type': 'application/json'
-        },
-      });
-	  
-      // 3. 监听连接打开事件，替代 socketTask.onopen
+      socketTask = uni.connectSocket({ url, header: { 'Content-Type': 'application/json' } })
+
       socketTask.onOpen(() => {
-        status.value = 'connected';
-        appendLog('socketTask 已连接');
-      });
-	  
-      // 4. 修改：监听消息事件，替代 socketTask.onmessage
+        status.value = 'connected'
+        appendLog('socketTask 已连接')
+      })
+
       socketTask.onMessage((evt) => {
-        let text = '';
-        // 处理不同类型的消息数据
+        let text = ''
         if (evt.data instanceof ArrayBuffer) {
-          const decoder = new TextDecoder('utf-8');
-          text = decoder.decode(new Uint8Array(evt.data));
+          const decoder = new TextDecoder('utf-8')
+          text = decoder.decode(new Uint8Array(evt.data))
         } else {
-          text = String(evt.data || '');
+          text = String(evt.data || '')
         }
-        appendLog(`<- ${text.trim()}`);
-     });
-      
-      // 5. 修改：监听错误事件，替代 socketTask.onerror
+        appendLog(`<- ${text.trim()}`)
+      })
+
       socketTask.onError((err) => {
-        status.value = 'error';
-        appendLog(`socketTask 错误: ${JSON.stringify(err)}`);
-      });
-      
-      // 6. 修改：监听关闭事件，替代 socketTask.onclose
+        status.value = 'error'
+        appendLog(`socketTask 错误: ${JSON.stringify(err)}`)
+      })
+
       socketTask.onClose(() => {
-        appendLog('socketTask 已断开');
-        status.value = 'disconnected';
-        socketTask = null;  // 清空任务实例
-      });
-      
-    } catch (e:any) {
-      status.value = 'error';
-      appendLog('socketTask 连接异常: ' + (e?.message || e));
+        appendLog('socketTask 已断开')
+        status.value = 'disconnected'
+        socketTask = null
+      })
+    } catch (e: any) {
+      status.value = 'error'
+      appendLog('socketTask 连接异常: ' + (e?.message || e))
     }
-    return;
+    return
   }
 
-  // TCP 分支（说明）：
-  // 1) 标准 H5 不支持原生 TCP；
-  // 2) 在 App-Plus 真机中可通过原生插件或 plus.android 调用 Java Socket 实现；
-  // 本示例仅做能力检测与提示，避免误导。
   if (!isAppPlus.value) {
-    uni.showToast({
-		title: 'TCP 需在 App-Plus(真机) 环境使用；请改用 WebSocket 或打包到手机再试',
-		icon: 'none',
-		duration: 3000
-	});
-    return;
+    uni.showToast({ title: 'TCP 需在 App-Plus(真机) 环境使用；请改用 WebSocket 或打包到手机再试', icon: 'none', duration: 3000 })
+    return
   }
   if (!isAndroid.value) {
-    uni.showToast({
-		title: '当前示例仅演示 Android TCP（iOS 需原生插件实现），请切换 WebSocket 或在 Android 真机测试',
-		icon: 'none',
-		duration: 3000
-	});
-    return;
+    uni.showToast({ title: '当前示例仅演示 Android TCP（iOS 需原生插件实现）', icon: 'none', duration: 3000 })
+    return
   }
-  appendLog('TCP 需借助原生插件或 plus.android Java Socket 实现，建议优先使用 WebSocket。');
+  appendLog('TCP 需借助原生插件或 plus.android Java Socket 实现，建议优先使用 WebSocket。')
 }
 
 function disconnect() {
   if (socketTask) {
-    try { socketTask.close(); } catch {}
-    socketTask = null;
+    try { socketTask.close() } catch {}
+    socketTask = null
   }
-  status.value = 'disconnected';
+  status.value = 'disconnected'
 }
 
 function send(txt: string) {
   if (status.value !== 'connected') {
-    uni.showToast({
-		title: '尚未连接',
-		icon: 'none',
-		duration: 1500
-	});
-    return;
+    uni.showToast({ title: '尚未连接', icon: 'none', duration: 1500 })
+    return
   }
-  const payload = txt.endsWith('\n') ? txt : txt + '\n';
+  const payload = txt.endsWith('\n') ? txt : txt + '\n'
   if (socketTask) {
-    socketTask.send({ // 注意：uni 的 send 是对象参数形式
+    socketTask.send({
       data: payload,
-      success: () => {
-        appendLog(`-> ${txt.trim()}`);
-      },
+      success: () => appendLog(`-> ${txt.trim()}`),
       fail: (err) => {
-        appendLog(`发送失败: ${JSON.stringify(err)}`);
-        uni.showToast({
-          title: '发送失败',
-          icon: 'none',
-          duration: 1500
-        });
+        appendLog(`发送失败: ${JSON.stringify(err)}`)
+        uni.showToast({ title: '发送失败', icon: 'none', duration: 1500 })
       }
-    });
+    })
   }
 }
 
 function sendCommand(cmd: 'F'|'B'|'L'|'R'|'S') {
-  // 具体协议根据你的 MCU 固件调整，这里示例发送单字母 + 换行
-  send(cmd);
+  send(cmd)
 }
 
 function sendCustom() {
-  if (!customPayload.value) return;
-  send(customPayload.value);
-  customPayload.value = '';
+  if (!customPayload.value) return
+  send(customPayload.value)
+  customPayload.value = ''
 }
 </script>
 

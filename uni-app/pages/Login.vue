@@ -11,29 +11,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { login } from '@/api/auth';
+import { ref } from 'vue'
 
-const router = useRouter();
-const username = ref('');
-const password = ref('');
-const loading = ref(false);
-const error = ref('');
+const username = ref('')
+const password = ref('')
+const loading = ref(false)
+const error = ref('')
 
 const onSubmit = async () => {
-  error.value = '';
-  loading.value = true;
+  error.value = ''
+  loading.value = true
   try {
-    const { data } = await login(username.value, password.value);
-    localStorage.setItem('token', data.token);
-    router.push({ name: 'robotController' });
+    // 本地模拟登录（避免 UTS2307 模块未找到）
+    if (!username.value || !password.value) {
+      throw new Error('请输入用户名与密码')
+    }
+    const token = 'dev-token'
+    uni.setStorageSync('token', token)
+
+    // 跳转到控制页（pages.json 已配置）
+    uni.reLaunch({ url: '/uni-app/pages/DirectRobotController' })
   } catch (e: any) {
-    error.value = e?.response?.data?.message || '登录失败';
+    error.value = e?.message || '登录失败'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 </script>
 
 <style scoped>

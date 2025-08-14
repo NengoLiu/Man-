@@ -53,6 +53,12 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Vibrant brand tokens for colorful UI (HSL) */
+    --brand-rose: 340 82% 60%;
+    --brand-violet: 262 83% 58%;
+    --brand-cyan: 195 93% 55%;
+    --brand-amber: 38 92% 55%;
   }
 
   .dark {
@@ -95,11 +101,26 @@ All colors MUST be HSL.
 }
 
 @layer base {
-  * {
-    @apply border-border;
+  *, ::before, ::after {
+    border-color: hsl(var(--border));
   }
 
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+/* Utilities: animations and helpers for vivid UI */
+@layer utilities {
+  @keyframes blob {
+    0% { transform: translate(0px, 0px) scale(1); }
+    33% { transform: translate(30px, -20px) scale(1.05); }
+    66% { transform: translate(-20px, 20px) scale(0.98); }
+    100% { transform: translate(0px, 0px) scale(1); }
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
   }
 }
