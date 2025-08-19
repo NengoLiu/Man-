@@ -8,7 +8,7 @@ import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./contexts/AuthContext";
-
+// 创建了一个 React Query 的客户端实例，用于后续的数据请求管理
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -38,5 +38,4 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
-
 export default App;

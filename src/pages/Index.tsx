@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import RobotController from "@/components/RobotController";
+import RobotController from "@/components/DirectRobotController";
 
 const Index = () => {
   useEffect(() => {

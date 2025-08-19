@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 // 机器人指令格式
+// interface为类型约束规则，必须包含字符串、数字类型
 interface RobotCommand {
   type: "move" | "stop" | "rotate";
   data: {
@@ -27,16 +28,27 @@ interface RobotCommand {
 }
 
 // 十六进制数据包结构
+// 定义一个接口，用于描述机器人通信的数据包格式
 interface RobotPacket {
+  // 源端口号：标识发送数据包的端口，用于区分不同的发送源
   srcPort: number;
+  // 目的端口号：标识接收数据包的端口，用于将数据正确送达目标
   destPort: number;
+  // 序列号：用于标识数据包的顺序，确保数据传输的有序性，便于接收方重组数据
   sequence: number;
+  // 确认号：表示已成功接收的数据包的下一个序列号，用于确认数据接收状态
   ack: number;
+  // 头部长度：表示数据包头部的长度，用于区分头部和数据部分
   headerLen: number;
+  // 标志位：包含多种控制信息，如是否为确认包、是否需要紧急处理等
   flags: number;
+  // 窗口大小：用于流量控制，告知发送方接收方当前可接收的最大数据量
   window: number;
+  // 校验和：用于检测数据包在传输过程中是否发生错误，确保数据完整性
   checksum: number;
+  // 紧急指针：当标志位指示有紧急数据时，该字段指向紧急数据的位置
   urgentPtr: number;
+  // 数据部分：以十六进制数字数组形式存储的实际传输数据
   data: number[];
 }
 
@@ -49,6 +61,7 @@ const DEADZONE_PX = 6;
 const calculateChecksum = (buffer: number[]): number => {
   let sum = 0;
   for (const byte of buffer) sum += byte;
+  // 将校验和结果限制在 16 位整数范围内（0-65535）
   return sum % 65536;
 };
 
@@ -470,7 +483,7 @@ const DirectRobotController: React.FC = () => {
     <section className="container py-10">
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">地坪漆涂敷机器人</h1>
-        <p className="text-muted-foreground mt-2">直接WebSocket连接，更快更稳定!</p>
+        <p className="text-muted-foreground mt-2">输入机器人的IP地址和端口就可以开始控制啦!</p>
       </header>
 
       <div className="space-y-6">
