@@ -8,35 +8,45 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 100% 98%;
+    --foreground: 230 15% 15%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 210 100% 99%;
+    --card-foreground: 230 15% 15%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 210 100% 99%;
+    --popover-foreground: 230 15% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 200 100% 45%;
+    --primary-foreground: 210 100% 98%;
+    --primary-glow: 190 100% 60%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 270 100% 45%;
+    --secondary-foreground: 210 100% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 40% 92%;
+    --muted-foreground: 230 15% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 320 100% 50%;
+    --accent-foreground: 210 100% 98%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 100% 55%;
+    --destructive-foreground: 210 100% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 210 30% 85%;
+    --input: 210 30% 88%;
+    --ring: 200 100% 45%;
 
-    --radius: 0.5rem;
+    /* Sci-fi gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(200 100% 45%), hsl(190 100% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(270 100% 45%), hsl(320 100% 50%));
+    --gradient-bg: linear-gradient(135deg, hsl(210 100% 98%), hsl(200 50% 95%));
+    
+    /* Glows and shadows */
+    --shadow-glow: 0 0 20px hsl(200 100% 45% / 0.3);
+    --shadow-card: 0 4px 20px hsl(200 50% 50% / 0.1);
+    
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -53,12 +63,6 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 217.2 91.2% 59.8%;
-
-    /* Vibrant brand tokens for colorful UI (HSL) */
-    --brand-rose: 340 82% 60%;
-    --brand-violet: 262 83% 58%;
-    --brand-cyan: 195 93% 55%;
-    --brand-amber: 38 92% 55%;
   }
 
   .dark {
@@ -101,26 +105,41 @@ All colors MUST be HSL.
 }
 
 @layer base {
-  *, ::before, ::after {
-    border-color: hsl(var(--border));
+  * {
+    @apply border-border;
   }
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    @apply bg-background text-foreground;
+    background: var(--gradient-bg);
+    min-height: 100vh;
   }
 }
 
-/* Utilities: animations and helpers for vivid UI */
-@layer utilities {
-  @keyframes blob {
-    0% { transform: translate(0px, 0px) scale(1); }
-    33% { transform: translate(30px, -20px) scale(1.05); }
-    66% { transform: translate(-20px, 20px) scale(0.98); }
-    100% { transform: translate(0px, 0px) scale(1); }
+@layer components {
+  .card-glow {
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(8px);
   }
-
-  .hover-scale {
-    @apply transition-transform duration-200 hover:scale-105;
+  
+  .btn-primary-glow {
+    background: var(--gradient-primary);
+    box-shadow: var(--shadow-glow);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .btn-primary-glow:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px hsl(200 100% 45% / 0.4);
+  }
+  
+  .control-dial {
+    filter: drop-shadow(0 4px 8px hsl(200 100% 45% / 0.2));
+  }
+  
+  .sidebar-glow {
+    background: linear-gradient(180deg, hsl(210 100% 99%), hsl(200 50% 97%));
+    border-right: 1px solid hsl(200 30% 85%);
+    backdrop-filter: blur(10px);
   }
 }
