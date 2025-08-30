@@ -31,7 +31,6 @@ const App = () => (
               </header>
               <main className="flex-1 overflow-auto">
                 <Routes>
-				  <Route path="/login" element={<Login />} />
                   <Route path="/" element={<DirectRobotController />} />
                   <Route path="/project" element={<Project />} />
                   <Route path="/about" element={<AboutUs />} />

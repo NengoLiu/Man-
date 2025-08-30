@@ -42,7 +42,7 @@ const Login = () => {
 
   useEffect(() => {
     if (session) {
-      navigate("/controller", { replace: true });
+      navigate("/control", { replace: true });
     }
   }, [session, navigate]);
 

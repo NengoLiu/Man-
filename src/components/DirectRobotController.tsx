@@ -86,24 +86,24 @@ const packetToBytes = (packet: RobotPacket): number[] => {
  */
 const floatToBytes = (value: number): number[] => {
   const buffer = new ArrayBuffer(4);
-  const view = new DataView(buffer);
-  view.setFloat32(0, value, ); // 小端序
+  const view = new DataView(buffer); // 这里view是DaaView实例，操作buffer
+  view.setFloat32(0, value, true); // 小端序
   return [view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)];
 };
 
 /**
  * uint32转4字节数组（用于pump_speed）
  * @param value - 需在0~4294967295范围内（uint32最大值）
- * @returns 4字节数组（大端序，与原协议保持一致）
+ * @returns 4字节数组（小端序，与原协议保持一致）
  */
 const uint32ToBytes = (value: number): number[] => {
   const buffer = new ArrayBuffer(4);
   const view = new DataView(buffer);
   // 1. 确保数值在uint32范围内（0~4294967295），并转为整数（泵转速无小数）
   const clampedValue = Math.max(0, Math.min(4294967295, Math.round(value)));
-  // 2. 写入无符号32位整数（大端序，与float转换的端序一致）
+  // 2. 写入无符号32位整数（小端序，与float转换的端序一致）
   view.setUint32(0, clampedValue, true); 
-  // 3. 按字节读取并返回（大端序：高位在前）
+  // 3. 按字节读取并返回（小端序：高位在前）
   return [view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)];
 };
 
