@@ -9,6 +9,11 @@
     "paths": {
       "@/*": ["./src/*"]
     },
+   "vueCompilerOptions": {
+	"jsx": true,
+	"jsxFragmentFactory": "Fragment",
+	"jsxFactory": "h"
+   },
     "noImplicitAny": false,
     "noUnusedParameters": false,
     "skipLibCheck": true,

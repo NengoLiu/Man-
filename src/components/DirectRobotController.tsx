@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { UrdfSimulator } from './UrdfSimulator';
 import { 
   Power, Wifi, Gauge, Activity, Play, RotateCcw, RotateCw, 
   Home, ChevronUp, ChevronDown, Zap, ChevronDown as ChevronDownIcon,
@@ -26,7 +27,7 @@ interface RobotCommand {
     y_speed?: number; // 移动Y轴速度（m/s）
     z_speed?: number; // 旋转速度（m/s）
     yaw?: number;     // YAW轴角度（-80° ~ 80°）
-    roll?: number;    // ROLL轴角度（0° ~ 360°）
+    roll?: number;    // ROLL轴角度（-180° ~ 180°）
     pump?: number;   // 料泵开关状态0或1
     up_down?: number; // 上下移动速度（-2 ~ 2）
     pump_speed?: number; // 泵转速（0 ~ 600 r/min）
@@ -34,6 +35,7 @@ interface RobotCommand {
     repeat?: number;  // 重复动作编号
 	reset?: number;   // 复位开关状态0或1
     test_value?: number; // 测试用数值
+    actionNum?: number; // 动作编号（用于record/repeat命令）
   };
 }
 
@@ -76,6 +78,7 @@ const packetToBytes = (packet: RobotPacket): number[] => {
   bytes.push((packet.length >> 8) & 0xFF);
   bytes.push(packet.sequence & 0xFF);
   bytes.push(packet.flags & 0xFF);
+  bytes.push((packet.flags >> 8) & 0xFF);
   bytes.push(...packet.data);
   bytes.push(packet.frame_end);
   return bytes;
@@ -86,24 +89,19 @@ const packetToBytes = (packet: RobotPacket): number[] => {
  */
 const floatToBytes = (value: number): number[] => {
   const buffer = new ArrayBuffer(4);
-  const view = new DataView(buffer); // 这里view是DaaView实例，操作buffer
+  const view = new DataView(buffer);
   view.setFloat32(0, value, true); // 小端序
   return [view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)];
 };
 
 /**
  * uint32转4字节数组（用于pump_speed）
- * @param value - 需在0~4294967295范围内（uint32最大值）
- * @returns 4字节数组（小端序，与原协议保持一致）
  */
 const uint32ToBytes = (value: number): number[] => {
   const buffer = new ArrayBuffer(4);
   const view = new DataView(buffer);
-  // 1. 确保数值在uint32范围内（0~4294967295），并转为整数（泵转速无小数）
   const clampedValue = Math.max(0, Math.min(4294967295, Math.round(value)));
-  // 2. 写入无符号32位整数（小端序，与float转换的端序一致）
   view.setUint32(0, clampedValue, true); 
-  // 3. 按字节读取并返回（小端序：高位在前）
   return [view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)];
 };
 
@@ -135,6 +133,8 @@ const DirectRobotController: React.FC = () => {
   const modeMenuRef = useRef<HTMLDivElement>(null);
   const repeatMenuRef = useRef<HTMLDivElement>(null);
   const recordMenuRef = useRef<HTMLDivElement>(null);
+  const startYawPosRef = useRef<{x: number, y: number, angle: number} | null>(null);
+  const prevTimeRef = useRef<number>(0);
 
   // 状态管理
   const [robotIp, setRobotIp] = useState("192.168.50.14");
@@ -158,7 +158,7 @@ const DirectRobotController: React.FC = () => {
     sent: number,
     bytes: number[],
     hex: string
-  } | null>(null); // 新增：存储测试结果
+  } | null>(null);
 
   // 节流器引用
   const zSpeedThrottleRef = useRef<{ last: number; timer: number | null; pending: RobotCommand | null }>({ 
@@ -189,7 +189,6 @@ const DirectRobotController: React.FC = () => {
 
   /**
    * 检查操作权限，如果在急停模式则提示
-   * @returns 是否允许操作
    */
   const checkOperationPermission = useCallback(() => {
     if (isEmergencyMode) {
@@ -319,60 +318,60 @@ const DirectRobotController: React.FC = () => {
         flags = 0x101; // CMD_MOVE 命令码
         const xBytes = floatToBytes(cmd.data.x_speed ?? 0); 
         const yBytes = floatToBytes(cmd.data.y_speed ?? 0);
-        data = [...xBytes, ...yBytes]; // 正确合并 8 字节数据（x4 + y4）
+        data = [...xBytes, ...yBytes];
         break;
       case 'z_speed':
         flags = 0x102; // CMD_Z_SPEED 命令码
         const z_speed = cmd.data.z_speed ?? 0;
-        data = floatToBytes(z_speed); // 4 字节
+        data = floatToBytes(z_speed);
         break;
       case 'mode':
         flags = 0x103; // 模式命令码
         const mode = cmd.data.mode ?? 0;
-        data = [mode & 0xFF]; // 1 字节（uint8）
+        data = [mode & 0xFF];
         break;
       case 'record':
         flags = 0x104; // CMD_RECORD 命令码
-        data = [0, 1, 2, 3, 4, 5]; // 6 字节（按原有逻辑）
+        data = [0, 1, 2, 3, 4, 5];
         break;
       case 'repeat':
         flags = 0x105; // CMD_REPEAT 命令码
-        data = [cmd.data.repeat ?? 0]; // 1 字节
+        data = [cmd.data.repeat ?? 0];
         break;
       case 'yaw':
         flags = 0x107; // CMD_YAW 命令码
         const yaw = cmd.data.yaw ?? 0;
-        data = floatToBytes(yaw); // 4 字节
+        data = floatToBytes(yaw);
         break;
       case 'roll':
         flags = 0x106; // CMD_ROLL 命令码
         const roll = cmd.data.roll ?? 0;
-        data = floatToBytes(roll); // 4 字节
+        data = floatToBytes(roll);
         break;
       case 'arm_reset':
         flags = 0x10A; // CMD_ARM_RESET 命令码
         const resetState = cmd.data.reset ?? 0;
-        data = [resetState & 0xFF]; // 1 字节（uint8）
+        data = [resetState & 0xFF];
         break;
       case 'pump':
         flags = 0x109; // CMD_PUMP 命令码
         const pumpState = cmd.data.pump ? 0x01 : 0x00; 
-        data = [pumpState]; // 1 字节
+        data = [pumpState];
         break;
       case 'up_down':
         flags = 0x108; // CMD_UP_DOWN 命令码
         const upDownValue = cmd.data.up_down ?? 0.0;
-        data = floatToBytes(upDownValue); // 4 字节
+        data = floatToBytes(upDownValue);
         break;
       case 'pump_speed':
         flags = 0x10B; // CMD_PUMP_SPEED 命令码
         const pumpSpeedValue = cmd.data.pump_speed ?? 0;
-        data = floatToBytes(pumpSpeedValue); // 4 字节
+        data = floatToBytes(pumpSpeedValue);
         break;
       case 'test':
-        flags = CMD_TEST; // 测试命令码，使用一个未占用的码值
+        flags = CMD_TEST; // 测试命令码
         const testValue = cmd.data.test_value ?? 0;
-        data = floatToBytes(testValue); // 4 字节，发送测试值
+        data = floatToBytes(testValue);
         break;
       default:
         if (showToast) toast({ title: '未知命令', description: `不支持的命令类型: ${cmd.type}` });
@@ -381,31 +380,26 @@ const DirectRobotController: React.FC = () => {
     
     // 构建数据包
     const buildPacket = (flags: number, data: number[], sequence: number) => {
-      const frameHeader = 0xA5; // 固定帧头
-      const frameEnd = 0xFF;    // 固定帧尾
-      // 长度计算：序列号(1字节) + 命令码(2字节) + 数据长度 → 对应 ESP32 解析逻辑
+      const frameHeader = 0xA5;
+      const frameEnd = 0xFF;
       const length = 1 + 2 + data.length; 
         
-      // 按协议顺序拼接字节（确保无错位）
       return new Uint8Array([
         frameHeader,
-        length & 0xFF,        // 长度低8位
-        (length >> 8) & 0xFF, // 长度高8位
-        sequence & 0xFF,      // 序列号（1字节，防止溢出）
-        flags & 0xFF,         // 命令码低8位
-        (flags >> 8) & 0xFF,  // 命令码高8位（2字节命令码，适配 0x101 等）
-        ...data,              // 数据部分（动态长度，如 move 的 8 字节）
+        length & 0xFF,
+        (length >> 8) & 0xFF,
+        sequence & 0xFF,
+        flags & 0xFF,
+        (flags >> 8) & 0xFF,
+        ...data,
         frameEnd
       ]);
     };
     
-    // 调用 buildPacket 生成最终数据包
     const packetBytes = buildPacket(flags, data, sequence);
-    // 转为十六进制字符串用于日志
     const hexStr = Array.from(packetBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
     
     try {
-      // 发送二进制数据包
       socketRef.current.send(packetBytes);
     
       logCommand(cmd, hexStr, 'sent');
@@ -414,7 +408,6 @@ const DirectRobotController: React.FC = () => {
         toast({ title: '指令已发送', description: `Hex: ${hexStr}` });
       }
       
-      // 如果是测试命令，保存测试结果
       if (cmd.type === 'test' && cmd.data.test_value !== undefined) {
         setTestResults({
           sent: cmd.data.test_value,
@@ -442,7 +435,6 @@ const DirectRobotController: React.FC = () => {
     bucket: React.MutableRefObject<{ last: number; timer: number | null; pending: RobotCommand | null }>,
     interval = 50
   ) => {
-    // 检查操作权限
     if (cmd.type !== "mode" && !checkOperationPermission()) {
       return;
     }
@@ -473,9 +465,8 @@ const DirectRobotController: React.FC = () => {
   }, [sendHexData, checkOperationPermission]);
 
   /**
-   * 发送重复动作双包（选中动作包 + 序列号+1且data=0的追加包）
+   * 发送重复动作双包
    */
-  // 修改sendActionDoublePacket函数，确保数据正确传递
   const sendActionDoublePacket = useCallback((actionType: 'record' | 'repeat', actionNum: number) => {
     if (!checkOperationPermission()) return;
     if (!connected || !socketRef.current) {
@@ -483,7 +474,6 @@ const DirectRobotController: React.FC = () => {
       return;
     }
   
-    // 校验动作编号（1-5）
     if (actionNum < 1 || actionNum > 5) {
       toast({ 
         title: '参数错误', 
@@ -498,14 +488,13 @@ const DirectRobotController: React.FC = () => {
     // 1. 动作包：数据为动作编号（0x01-0x05）
     const firstSequence = sequenceCounter.current++;
     if (firstSequence > 255) sequenceCounter.current = 1;
-    const actionData = [actionNum]; // 关键：明确数据为1字节（0x01-0x05）
+    const actionData = [actionNum & 0xFF];
     const firstPacket: RobotPacket = {
       frame_header: 0xA5,
-      // 长度计算：1（序列号） + 2（命令码） + 数据长度 → 必须正确
       length: 1 + 2 + actionData.length, 
       sequence: firstSequence,
       flags: commandCode,
-      data: actionData, // 传递动作编号
+      data: actionData,
       frame_end: 0xFF
     };
     const firstBytes = packetToBytes(firstPacket);
@@ -514,19 +503,18 @@ const DirectRobotController: React.FC = () => {
     // 2. 追加包：数据固定为0x00
     const secondSequence = sequenceCounter.current++;
     if (secondSequence > 255) sequenceCounter.current = 1;
-    const appendData = [0x00]; // 关键：明确追加包数据为1字节0x00
+    const appendData = [0x00];
     const secondPacket: RobotPacket = {
       frame_header: 0xA5,
-      length: 1 + 2 + appendData.length, // 同样修正长度计算
+      length: 1 + 2 + appendData.length,
       sequence: secondSequence,
       flags: commandCode,
-      data: appendData, // 传递0x00
+      data: appendData,
       frame_end: 0xFF
     };
     const secondBytes = packetToBytes(secondPacket);
     const secondHexStr = secondBytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
   
-    // 发送逻辑（保留）
     try {
       socketRef.current.send(new Uint8Array(firstBytes));
       logCommand({ type: actionType, data: { actionNum } }, firstHexStr, 'sent');
@@ -536,20 +524,18 @@ const DirectRobotController: React.FC = () => {
           socketRef.current.send(new Uint8Array(secondBytes));
           logCommand({ type: actionType, data: { actionNum: 0 } }, secondHexStr, 'sent');
         }
-      }, 20); // 稍微延长延迟，确保STM32正确接收顺序
+      }, 20);
       
       toast({
         title: `${actionType === 'record' ? '记录' : '重复'}动作指令已发送`,
         description: `动作${actionNum}包: ${firstHexStr} | 追加包: ${secondHexStr}`,
       });
     } catch (error) {
-      // 错误处理（保留）
       logCommand({ type: actionType, data: { actionNum } }, firstHexStr, 'error', String(error));
       logCommand({ type: actionType, data: { actionNum: 0 } }, secondHexStr, 'error', String(error));
       toast({ title: '发送失败', description: String(error), variant: 'destructive' });
     }
   
-    // 更新UI状态（保留）
     if (actionType === 'record') {
       setRecordMenuOpen(false);
       setSelectedRecordAction(actionNum);
@@ -566,14 +552,12 @@ const DirectRobotController: React.FC = () => {
     setCurrentMode(mode);
     setModeMenuOpen(false);
     
-    // 发送模式切换命令
     const cmd: RobotCommand = {
       type: "mode",
       data: { mode: MODE_MAP[mode].code }
     };
     sendHexData(cmd, true);
     
-    // 如果切换到急停模式，重置所有控制状态
     if (mode === "emergency") {
       setZSpeed(0);
       setStick({ x: 0, y: 0 });
@@ -745,21 +729,24 @@ const DirectRobotController: React.FC = () => {
   };
 
   /**
-   * YAW轴控制相关函数
+   * YAW轴控制相关函数 - 与ROLL轴保持一致的实现
    */
   const getYawAngleFromEvent = (e: React.PointerEvent | PointerEvent | MouseEvent) => {
     const el = yawRef.current;
     if (!el) return yawAngle;
+    
     const rect = el.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const dx = ("clientX" in e ? e.clientX : 0) - cx;
     const dy = ("clientY" in e ? e.clientY : 0) - cy;
     
+    // 计算角度
     let deg = Math.atan2(dx, -dy) * (180 / Math.PI);
+    // 限制在-80°到+80°范围内
     deg = Math.max(-80, Math.min(80, deg));
     
-    return Number(deg.toFixed(1))
+    return Number(deg.toFixed(1));
   };
 
   const handleYawRotate = useCallback((deg: number) => {
@@ -789,19 +776,24 @@ const DirectRobotController: React.FC = () => {
   };
 
   /**
-   * ROLL轴控制相关函数
+   * ROLL轴控制相关函数 - 修改为类似YAW轴的-180°到+180°范围
    */
   const getRollAngleFromEvent = (e: React.PointerEvent | PointerEvent | MouseEvent) => {
     const el = rollRef.current;
     if (!el) return rollAngle;
+    
     const rect = el.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const dx = ("clientX" in e ? e.clientX : 0) - cx;
     const dy = ("clientY" in e ? e.clientY : 0) - cy;
-    let deg = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-    if (deg < 0) deg += 360;
-    return Number(deg.toFixed(1))
+    
+    // 计算角度
+    let deg = Math.atan2(dx, -dy) * (180 / Math.PI);
+    // 限制在-80°到+80°范围内
+    deg = Math.max(-170, Math.min(170, deg));
+	
+	return Number(deg.toFixed(1));
   };
 
   const handleRollRotate = useCallback((deg: number) => {
@@ -836,13 +828,13 @@ const DirectRobotController: React.FC = () => {
   const handlePumpToggle = useCallback(() => {
     if (!checkOperationPermission()) return;
     
-    // 切换状态（0<->1）
-    const newState = pumpOn === 0 ? 1 : 0;
+    const newState = !pumpOn;
+	const pumpValue = newState ? 1 : 0;
     setPumpOn(newState);
       
     const cmd: RobotCommand = {
       type: "pump",
-      data: { pump: newState } // 传递数值
+      data: { pump: newState ? 1 : 0 }
     };
     throttledSend(cmd, pumpThrottleRef, 50);
   }, [pumpOn, throttledSend, checkOperationPermission]);
@@ -894,7 +886,7 @@ const DirectRobotController: React.FC = () => {
   }, [throttledSend]);
 
   /**
-   * 新增：发送3.14测试值
+   * 发送3.14测试值
    */
   const sendTestValue = useCallback(() => {
     if (!checkOperationPermission()) return;
@@ -907,6 +899,75 @@ const DirectRobotController: React.FC = () => {
     
     sendHexData(cmd, true);
   }, [sendHexData, checkOperationPermission]);
+
+  /**
+   * 键盘控制函数
+   */
+  const handleYawKeyboardControl = useCallback((direction: 'left' | 'right') => {
+    if (!connected) {
+      toast({ title: "请先连接机器人" });
+      return;
+    }
+    
+    if (!checkOperationPermission()) return;
+    
+    // A键向左转（减少yaw角度），D键向右转（增加yaw角度）
+    const increment = direction === 'left' ? -1.5 : 1.5; // 每次调整0.1度
+    const newAngle = Math.max(-80, Math.min(80, yawAngle + increment));
+    handleYawRotate(newAngle);
+  }, [connected, checkOperationPermission, yawAngle, handleYawRotate, toast]);
+
+  const handleRollKeyboardControl = useCallback((direction: 'left' | 'right') => {
+    if (!connected) {
+      toast({ title: "请先连接机器人" });
+      return;
+    }
+    
+    if (!checkOperationPermission()) return;
+    
+    // 左箭头键左转（减少roll角度），右箭头键右转（增加roll角度）
+    const increment = direction === 'left' ? -1.5 : 1.5; // 每次调整1.5度
+    const newAngle = Math.max(-180, Math.min(180, rollAngle + increment));
+    
+    handleRollRotate(newAngle);
+  }, [connected, checkOperationPermission, rollAngle, handleRollRotate, toast]);
+
+  /**
+   * 键盘事件监听器
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 防止在输入框中触发
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      switch (e.key.toLowerCase()) {
+        case 'a':
+          e.preventDefault();
+          handleYawKeyboardControl('left');
+          break;
+        case 'd':
+          e.preventDefault();
+          handleYawKeyboardControl('right');
+          break;
+        case 'arrowleft':
+          e.preventDefault();
+          handleRollKeyboardControl('left');
+          break;
+        case 'arrowright':
+          e.preventDefault();
+          handleRollKeyboardControl('right');
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleYawKeyboardControl, handleRollKeyboardControl]);
 
   /**
    * 组件清理函数
@@ -956,15 +1017,17 @@ const DirectRobotController: React.FC = () => {
     }
   }
 
+  // YAW轴计算
   const yawCx = 110, yawCy = 110, yawR = DIAL_R;
   const yawRad = (yawAngle * Math.PI) / 180;
   const yawKnobX = yawCx + (yawR - 10) * Math.sin(yawRad);
   const yawKnobY = yawCy - (yawR - 10) * Math.cos(yawRad);
 
+  // ROLL轴计算 - 修改为类似YAW轴的计算方式
   const rollCx = 110, rollCy = 110, rollR = DIAL_R;
-  const rollRad = (((rollAngle % 360) - 90) * Math.PI) / 180;
-  const rollKnobX = rollCx + (rollR - 10) * Math.cos(rollRad);
-  const rollKnobY = rollCy + (rollR - 10) * Math.sin(rollRad);
+  const rollRad = (rollAngle * Math.PI) / 180;
+  const rollKnobX = rollCx + (rollR - 10) * Math.sin(rollRad);
+  const rollKnobY = rollCy - (rollR - 10) * Math.cos(rollRad);
 
   return (
     <section className="container py-10">
@@ -1235,7 +1298,7 @@ const DirectRobotController: React.FC = () => {
                   慢速前进
                 </Button>
                 
-                {/* 新增：3.14测试按钮 */}
+                {/* 测试按钮 */}
                 <Button 
                   onClick={sendTestValue}
                   variant="secondary"
@@ -1270,7 +1333,7 @@ const DirectRobotController: React.FC = () => {
                     <ChevronDownIcon className={`ml-1 h-4 w-4 transition-transform ${recordMenuOpen ? 'rotate-180' : ''}`} />
                   </Button>
                         
-                  {/* 记录动作下拉选项（横向排列动作1-5） */}
+                  {/* 记录动作下拉选项 */}
                   {recordMenuOpen && (
                     <div className="absolute z-50 mt-2 w-fit rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 py-2 px-1">
                       {[1, 2, 3, 4, 5].map((action) => (
@@ -1302,13 +1365,13 @@ const DirectRobotController: React.FC = () => {
                     <ChevronDownIcon className={`ml-1 h-4 w-4 transition-transform ${repeatMenuOpen ? 'rotate-180' : ''}`} />
                   </Button>
                   
-                  {/* 下拉动作选择栏（横向排列动作1-5） */}
+                  {/* 下拉动作选择栏 */}
                   {repeatMenuOpen && (
                     <div className="absolute z-50 mt-2 w-fit rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 py-2 px-1">
                       {[1, 2, 3, 4, 5].map((action) => (
                         <button
                           key={action}
-                          onClick={() => sendRepeatDoublePacket('repeat', action)}
+                          onClick={() => sendActionDoublePacket('repeat', action)}
                           className={`inline-block px-4 py-2 text-sm mx-1 rounded ${
                             selectedRepeatAction === action 
                               ? 'bg-primary text-primary-foreground' 
@@ -1333,23 +1396,34 @@ const DirectRobotController: React.FC = () => {
               <RotateCw className="h-5 w-5 text-primary" />
               机械臂控制
             </CardTitle>
-            <CardDescription>左摇杆控制YAW轴（±80°），右摇杆控制ROLL轴（360°）</CardDescription>
+            <CardDescription>左摇杆控制YAW轴（±80°），右摇杆控制ROLL轴（±180°）</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* YAW轴控制 */}
               <div className="flex flex-col items-center space-y-4">
                 <h4 className="text-sm font-medium">YAW轴控制</h4>
+				<UrdfSimulator yaw={yawAngle} roll={0} />
+                <div className="text-xs text-muted-foreground text-center px-4 bg-muted/20 rounded-md py-1 border">
+                  ⌨️ 键盘控制：A键左转 / D键右转 (每次5°)
+                </div>
                 <div className="relative">
                   <svg
                     ref={yawRef}
                     width="220"
                     height="220"
                     onPointerDown={onYawPointerDown}
+					onTouchStart={(e) => {
+					  e.preventDefault();
+					  const touch = e.touches[0];
+					  const mockEvent = { clientX: touch.clientX, clientY: touch.clientY } as React.PointerEvent;
+					  onYawPointerDown(mockEvent);
+				    }}
                     className={`select-none cursor-pointer control-dial ${isEmergencyMode ? 'cursor-not-allowed' : ''}`}
+					style={{ pointerEvents: isEmergencyMode ? 'none' : 'auto' }}
                   >
                     <path
-                      d={`M ${yawCx - yawR * 0.985} ${yawCy - yawR * 0.174} A ${yawR} ${yawR} 0 0 0 ${yawCx + yawR * 0.985} ${yawCy - yawR * 0.174}`}
+                      d={`M ${yawCx - yawR * 0.985} ${yawCy - yawR * 0.174} A ${yawR} ${yawR} 0 0 1 ${yawCx + yawR * 0.985} ${yawCy - yawR * 0.174}`}
                       fill="none"
                       stroke="hsl(var(--border))"
                       strokeWidth="3"
@@ -1388,21 +1462,31 @@ const DirectRobotController: React.FC = () => {
               {/* ROLL轴控制 */}
               <div className="flex flex-col items-center space-y-4">
                 <h4 className="text-sm font-medium">ROLL轴控制</h4>
+				<UrdfSimulator yaw={0} roll={rollAngle} />
+                <div className="text-xs text-muted-foreground text-center px-4 bg-muted/20 rounded-md py-1 border">
+                  ⌨️ 键盘控制：←左转 / →右转 (每次1.5°)
+                </div>
                 <div className="relative">
                   <svg
                     ref={rollRef}
                     width="220"
                     height="220"
                     onPointerDown={onRollPointerDown}
+					onTouchStart={(e) => {
+					  e.preventDefault();
+					  const touch = e.touches[0];
+					  const mockEvent = { clientX: touch.clientX, clientY: touch.clientY } as React.PointerEvent;
+					  onRollPointerDown(mockEvent);
+				    }}
                     className={`select-none cursor-pointer control-dial ${isEmergencyMode ? 'cursor-not-allowed' : ''}`}
+					style={{ pointerEvents: isEmergencyMode ? 'none' : 'auto' }}
                   >
-                    <circle
-                      cx={rollCx}
-                      cy={rollCy}
-                      r={rollR}
+                    <path
+                      d={`M ${rollCx - rollR * 0.985} ${rollCy - rollR * 0.174} A ${rollR} ${rollR} 0 0 1 ${rollCx + rollR * 0.985} ${rollCy - rollR * 0.174}`}
                       fill="none"
                       stroke="hsl(var(--border))"
                       strokeWidth="3"
+                      strokeLinecap="round"
                     />
                     <circle
                       cx={rollKnobX}
@@ -1417,17 +1501,14 @@ const DirectRobotController: React.FC = () => {
                         <stop offset="100%" stopColor="hsl(var(--accent)/0.7)" />
                       </linearGradient>
                     </defs>
-                    <text x={rollCx} y={25} textAnchor="middle" className="text-xs fill-muted-foreground">
+                    <text x={rollCx - 60} y={rollCy + 80} textAnchor="middle" className="text-xs fill-muted-foreground">
+                      -170°
+                    </text>
+                    <text x={rollCx} y={rollCy - 80} textAnchor="middle" className="text-xs fill-muted-foreground">
                       0°
                     </text>
-                    <text x={rollCx} y={205} textAnchor="middle" className="text-xs fill-muted-foreground">
-                      180°
-                    </text>
-                    <text x={25} y={rollCy + 5} textAnchor="middle" className="text-xs fill-muted-foreground">
-                      270°
-                    </text>
-                    <text x={195} y={rollCy + 5} textAnchor="middle" className="text-xs fill-muted-foreground">
-                      90°
+                    <text x={rollCx + 60} y={rollCy + 80} textAnchor="middle" className="text-xs fill-muted-foreground">
+                      +170°
                     </text>
                   </svg>
                 </div>
@@ -1686,7 +1767,6 @@ const DirectRobotController: React.FC = () => {
                 onClick={() => {
                   if (!checkOperationPermission()) return;
                   
-                  // 保留有逻辑：重置前端状态变量
                   setYawAngle(0);
                   setRollAngle(0);
                   setPumpOn(false);
@@ -1694,28 +1774,25 @@ const DirectRobotController: React.FC = () => {
                   setPumpSpeed(200);
                   setZSpeed(0);
                   
-                  // 新增：添加reset: 1参数（执行复位）
                   sendHexData({ 
                     type: "arm_reset", 
-                    data: { reset: 1 }  // 传递1表示执行复位操作
+                    data: { reset: 1 }
                   }, true);
                 }}
                 variant="outline"
                 disabled={!connected || isEmergencyMode}
                 className="flex items-center gap-2"
               >
-                {/* 按钮图标和文字保持不变 */}
                 <RotateCcw size={16} />
                 机械臂复位
               </Button>
               
-              {/* （可选）添加取消复位按钮，用于发送reset: 0 */}
               <Button 
                 onClick={() => {
                   if (!checkOperationPermission()) return;
                   sendHexData({ 
                     type: "arm_reset", 
-                    data: { reset: 0 }  // 传递0表示取消复位
+                    data: { reset: 0 }
                   }, true);
                 }}
                 variant="secondary"
@@ -1734,6 +1811,17 @@ const DirectRobotController: React.FC = () => {
 };
 
 export default DirectRobotController;
+
+
+
+
+
+
+
+
+
+
+
 
 
 
